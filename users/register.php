@@ -46,14 +46,81 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
         if($user >0){
             $error = "Username or Email already Exist !";
         }else {
-            $stmt = $pdo->prepare("INSERT INTO users (username, email, phone, password) VALUES(:username, :email, :phone, :password)");
-            $stmt->execute([
-                'username' => $username,
-                'email' => $email,
-                'phone' => $phone,
-                'password' => $hashPwd
+              // API call to Xixapay
+            $data = [
+                "name" => $username,
+                "email" => $email,
+                "phoneNumber" => $phone,
+                "bankCode" => ["20867"],
+                "accountType" => "static",
+                "id_type" => "nin",
+                "id_number" => $nin,
+                "businessId" => "b9f024598d845ed736f8c248b8b616f5d2fdd62d"
+            ];
+            $jsonData = json_encode($data);
+
+            $curl = curl_init();
+            curl_setopt_array($curl, [
+                CURLOPT_URL => 'https://api.xixapay.com/api/v1/createVirtualAccount',
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_CUSTOMREQUEST => 'POST',
+                CURLOPT_POSTFIELDS => $jsonData,
+                CURLOPT_HTTPHEADER => [
+                    'Content-Type: application/json',
+                    'api-key: 0321570cb58a2c8392833d5c675b2dd0131b9b5d',
+                    'Authorization: Bearer 8dc4b2fc78f46a61ff4b1e80fa79d3042b929e88dfca30a78711b08b29fe77120b08ea87dda5431b74bd3c5f0611b096c8aff238829e5a9f7862f051'
+                ],
             ]);
-            $success = "Register Success";
+
+             $response = curl_exec($curl);
+            $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+            $curl_error = curl_error($curl);
+            curl_close($curl);
+
+              if ($curl_error) {
+                $_SESSION['warning'] = "Server error, please try again.";
+            } else {
+                $responseData = json_decode($response, true);
+
+                $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+                $balance = 0;
+
+                if (
+                    isset($responseData['status']) &&
+                    $responseData['status'] === "success" &&
+                    isset($responseData['bankAccounts'][0])
+                ) {
+                    // Extract account details from API response
+                    $accountNumber = $responseData['bankAccounts'][0]['accountNumber'];
+                    $bankName = $responseData['bankAccounts'][0]['bankName'];
+                    $accountName = $responseData['bankAccounts'][0]['accountName'];
+
+                    // Insert with bank details
+                    $stmt = $pdo->prepare('INSERT INTO users 
+                        (name, email, phone, accountName, bankName, accountNumber, balance, password) 
+                        VALUES 
+                        (:name, :email, :phone, :accountName, :bankName, :accountNumber, :balance, :password)'
+                    );
+
+                    $stmt->execute([
+                        'name' => $name,
+                        'email' => $email,
+                        'phone' => $phone,
+                        'accountName' => $accountName,
+                        'bankName' => $bankName,
+                        'accountNumber' => $accountNumber,
+                        'balance' => $balance,
+                        'password' => $hashed_password
+                    ]);
+
+                    // header("location:index");
+                    $success = "Account created successfully. Redirecting to login ...";
+                    exit();
+
+                } else {
+                $error = "Something went wrong. Please try again !".$response;
+            }
+    }
         }
     }
    
@@ -67,7 +134,7 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Buy cheap data and airtime | nomauglobalventures</title>
+    <title>Buy cheap data and airtime | nomauglobalsub</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         * {
@@ -93,7 +160,7 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
 
         body {
             background-color: #f5f9f5;
-            min-height: 100vh;
+            /* min-height: 100vh; */
             display: flex;
             align-items: center;
             justify-content: center;
@@ -103,7 +170,7 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
 
         .container {
             width: 100%;
-            max-width: 480px;
+            /* max-width: 480px; */
             background-color: var(--white);
             border-radius: 16px;
             box-shadow: 0 10px 30px rgba(76, 175, 80, 0.1);

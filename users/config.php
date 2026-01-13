@@ -6,7 +6,6 @@ $host = "localhost";
 $dbuser = "root";
 $dbpass = "";
 $dbname = "nomauglobal";
-// $charset = "utf8mb4";
 
 $dsn = "mysql:host=$host;dbname=$dbname;";
 

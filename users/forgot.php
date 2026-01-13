@@ -1,56 +1,86 @@
 <?php
 session_start();
-error_reporting(0);
-$error = ""; // message to display when an error occur
-$success = ""; // message to display when success
-require_once "users/config.php";
-if($_SERVER['REQUEST_METHOD'] === "POST"){
-    $username = trim($_POST['username']);
-    $password = trim($_POST['password']);
+error_reporting();
 
-    if(empty($username)){
-        $error = "Username input cannot be empty !";
-    }elseif (empty($password)) {
-        $error = "Password input cannot be empty !";
+use PHPMailer\PHPMailer\PHPMailer;
+ use PHPMailer\PHPMailer\Exception;
+
+ require '../phpmailer/src/Exception.php';
+ require '../phpmailer/src/PHPMailer.php';
+ require '../phpmailer/src/SMTP.php';
+
+ require_once  "config.php";
+ $error = "";  // message to display in case of error
+ $success = ""; // message to display on success
+if(isset($_POST["submit"]))
+{
+  $email = htmlspecialchars($_POST['email']);
+  $token = rand(111111, 999999);
+
+  if(empty($email)){
+        $error = "Email cannot be empty !";
+  }else {
+    $query = "SELECT * FROM users WHERE email = ? limit 1 ";
+  $stmt = $pdo->prepare($query);
+  $stmt->execute([$email]);
+  $user = $stmt->fetch();
+
+  if($user > 0)
+  {
+     $upd = "UPDATE users SET password = :token WHERE email = :email";
+    $stmt = $pdo->prepare($upd);
+    $stmt->bindParam(':token', $token, PDO::PARAM_STR);
+    $stmt->bindParam(':email', $email, PDO::PARAM_STR);
+    $stmt->execute();
+    if($upd){
+      $mail = new PHPMailer(true);
+               try {
+                   $mail->isSMTP();                                            // Send using SMTP
+                   $mail->Host       = 'smtp.gmail.com';                         // Set the SMTP server to send through (Gmail SMTP server for example)
+                   $mail->SMTPAuth   = true;                                     // Enable SMTP authentication
+                   $mail->Username   = 'beenaliyusub@gmail.com';                   // SMTP username
+                   $mail->Password   = 'zxqo dkyo wovu vrvz';                    // SMTP password
+                   $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;           // Enable TLS encryption
+                   $mail->Port       = 587;                                      // TCP port to connect to
+      
+              
+                   //Recipients
+                   $mail->setFrom('beenaliyusub@mail.com', 'BeenAliyu Data Sub');
+                   $mail->addAddress($_POST['email']); // Add a recipient
+              
+                   //Content
+                   $mail->isHTML(true);                                          // Set email format to HTML
+                   $mail->Subject = 'Login Password Recovery ';
+                   $mail->Body    ='
+                           "<h3>Dear '.$user["username"].', you just request to reset your password. Here is your OTP '."<b>$token</b>".' copy it and verify your email to login next time</h3>"
+                   ';
+                  //$mail->AltBody = 'Make sure you copy it correctly so that you can be able to verify and update your account password for you to continue your learning processs .';
+             
+                   $mail->send();
+                   //echo 'Message has been sent successfully';
+                 $success = "Redirecting to OTP verification panel ...";
+                          } catch (Exception $e) {
+                                        echo "Message could not be sent. Mailer Error: {$mail->ErrorInfo}";
+                                    }
     }else {
-        $stmt = $pdo->prepare("SELECT * FROM users WHERE username = ? ");
-        $stmt->execute([$username]);
-        $user = $stmt->fetch();
-        if($user && password_verify($password, $user['password'])){
-             $_SESSION['user_id'] = $user['id'];
-             $_SESSION['email'] = $user['email'];
-
-             $login_time = date('Y-m-d H:i:s');
-                    
-                  //  Insert into login_history table
-                    $stmt = $pdo->prepare("INSERT INTO login_history (user_id, login_time) VALUES (?, ?)");
-                    $stmt->execute([$user['id'], $login_time]);
-                    
-                   // Update login_counts
-                    $stmt = $pdo->prepare("SELECT COUNT(*) as count FROM login_history WHERE user_id = ?");
-                    $stmt->execute([$user['id']]);
-                    $login_count = $stmt->fetch(PDO::FETCH_ASSOC)['count'];
-
-                    $stmt = $pdo->prepare("INSERT INTO login_counts (user_id, login_count, last_login) 
-                                        VALUES (?, ?, ?) 
-                                        ON DUPLICATE KEY UPDATE login_count = ?, last_login = ?");
-                    $stmt->execute([$user['id'], $login_count, $login_time, $login_count, $login_time]);
-
-
-              $success = "Logged in successfully redirecting to dashboard ...";
-        }else{
-             $_SESSION['login_attempt']+=1;
-             $error = "Incorrect login details !";
-        }
+      // message on error
+      $error = "Something went wrong. Please try again !";
     }
+  }else {
+    // message on error occur
+    $error = "No matching email found !";
+
+  }
+  }
 }
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Buy cheap data and airtime | nomauglobalsub</title>
+    <title>Password Recovery | nomauglobalsub</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
      <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content=" #4CAF50">
@@ -370,78 +400,6 @@ if($_SERVER['REQUEST_METHOD'] === "POST"){
         .form-container form {
             animation: fadeIn 0.5s ease-out;
         }
-         /* WhatsApp Button Styles */
-        .whatsapp-button {
-            position: fixed;
-            bottom: 30px;
-            right: 30px;
-            width: 60px;
-            height: 60px;
-            background-color: #25D366;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 4px 20px rgba(37, 211, 102, 0.5);
-            cursor: pointer;
-            transition: all 0.3s ease;
-            z-index: 1000;
-            animation: pulse 2s infinite;
-        }
-
-        .whatsapp-button:hover {
-            transform: scale(1.1);
-            box-shadow: 0 6px 25px rgba(37, 211, 102, 0.7);
-        }
-
-        .whatsapp-button i {
-            color: white;
-            font-size: 32px;
-        }
-
-        .whatsapp-tooltip {
-            position: absolute;
-            bottom: 70px;
-            right: 0;
-            background: #2c3e50;
-            color: white;
-            padding: 8px 12px;
-            border-radius: 4px;
-            font-size: 0.85rem;
-            white-space: nowrap;
-            opacity: 0;
-            transform: translateY(10px);
-            transition: all 0.3s ease;
-            pointer-events: none;
-        }
-
-        .whatsapp-button:hover .whatsapp-tooltip {
-            opacity: 1;
-            transform: translateY(0);
-        }
-
-        @keyframes pulse {
-            0% {
-                box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.7);
-            }
-            70% {
-                box-shadow: 0 0 0 10px rgba(37, 211, 102, 0);
-            }
-            100% {
-                box-shadow: 0 0 0 0 rgba(37, 211, 102, 0);
-            }
-        }
-        @media(max-width: 576px){
-            .whatsapp-button{
-                bottom:20px;
-                right:20px;
-                width:50px;
-                height:50px;
-            }
-             .whatsapp-button i{
-                font-size: 26px;
-             }
-        }
     </style>
 </head>
 <body>
@@ -449,9 +407,9 @@ if($_SERVER['REQUEST_METHOD'] === "POST"){
         <div class="header">
             <div class="logo">
                 <div class="logo-icon">
-                    <i class="fas fa-user-plus"></i>
+                    <i class="fas fa-lock"></i>
                 </div>
-                <div class="logo-text">Sign Up</div>
+                <div class="logo-text">Password Recovery</div>
             </div>
             <!-- <p class="subtitle">Sign up to get you started</p> -->
         </div>
@@ -460,85 +418,21 @@ if($_SERVER['REQUEST_METHOD'] === "POST"){
             <div class="success-message" id="success-message">
             </div>
             
-            <form action="#" method="post" autocomplete="on" id="registerForm">
+            <form action="#" method="post" autocomplete="off" id="registerForm">
                 <div class="input-group">
-                    <label for="username">Username</label>
+                    <label for="username">Email <Address></Address></label>
                     <div class="input-wrapper">
-                        <input type="text" id="username" name="username" placeholder="Enter Username" value="<?php echo $username ?>">
-                        <!-- <div class="input-icon">
-                            <i class="fas fa-user"></i>
-                        </div> -->
-                    </div>
-                </div>
-                
-                <div class="input-group">
-                    <label for="confirm-password">Password</label>
-                    <div class="input-wrapper">
-                        <input type="password" id="confirm-password" name="password" placeholder="Enter password">
-                        <div class="input-icon password-toggle" id="confirm-password-toggle">
-                            <i class="fas fa-eye" id="toggleConfirmPassword"></i>
-                        </div>
+                        <input type="email" id="email" name="email" placeholder="Enter Email Address" >
                     </div>
                 </div>
                
-                <button type="submit" name="submit" id="login-btn">Sign Up</button>
+                <button type="submit" name="submit" id="login-btn">Submit</button>
+                 <span>Back to <a href="../index.php">Login</a></span>
             </form>
-                <!-- WhatsApp Button -->
-            <div class="whatsapp-button" id="whatsappButton">
-                <i class="fab fa-whatsapp"></i>
-                <div class="whatsapp-tooltip">Contact Support</div>
-            </div>
-            <div class="signup-link">
-                <span>Didnt have an account? <a href="users/register.php">Sign up here</a></span><br>
-                <span><a href="users/forgot.php">Forgot Password</a></span>
-            </div>
         </div>
     </div>
 
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script>
-       document.addEventListener('DOMContentLoaded', function() {
-            const toggleConfirmPassword = document.getElementById('toggleConfirmPassword');
-            const passwordInput = document.getElementById('password');
-            const confirmPasswordInput = document.getElementById('confirm-password');
-            
-            // Toggle confirm password visibility
-            toggleConfirmPassword.addEventListener('click', function() {
-                const type = confirmPasswordInput.getAttribute('type') === 'password' ? 'text' : 'password';
-                confirmPasswordInput.setAttribute('type', type);
-                this.classList.toggle('fa-eye');
-                this.classList.toggle('fa-eye-slash');
-            });
-        
-              
-            });
-
-            document.getElementById('whatsappButton').addEventListener('click', function() {
-            // Replace this phone number with your actual WhatsApp group number
-            // Format: country code + area code + phone number (without any special characters)
-            const phoneNumber = "+2347026987245"; // Example number - replace with your actual number
-            
-            // Replace this message with your preferred welcome message
-            const message = "Hello! I need support with my account.";
-            
-            // Encode the message for URL
-            const encodedMessage = encodeURIComponent(message);
-            
-            // Create the WhatsApp URL
-            const whatsappURL = `https://wa.me/${phoneNumber}?text=${encodedMessage}`;
-            
-            // Open WhatsApp in a new tab
-            window.open(whatsappURL, '_blank');
-        });
-            if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('service-worker.js')
-      .then(function(reg) {
-        console.log('Service worker registered.', reg);
-      }).catch(function(err) {
-        console.warn('Service worker registration failed:', err);
-      });
-  }
-    </script>
       <?php if($error) : ?>
         <script>
              Swal.fire({
@@ -562,7 +456,7 @@ if($_SERVER['REQUEST_METHOD'] === "POST"){
         showConfirmButton: false,
         timer: 3000,
       }).then(() => {
-        window.location.href = "users/dashboard";
+        window.location.href = "verifyOTP.php";
       });
         </script>
         <?php endif; ?>
