@@ -27,8 +27,7 @@ function detectNetwork($phone) {
     if (in_array($prefix, $nineMobilePrefixes)) return "9MOBILE";
     return "Unknown";
 }
-
-$id = $_SESSION['user_id'];
+// $id = $_SESSION['user_id'];
 $user_id = $_SESSION['email'];
 $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ?");
 $stmt->execute([$user_id]);
@@ -54,11 +53,6 @@ foreach ($data as $rows) {
     $bank = $rows['bankName'];
 }
 
-// ✅ API credentials
-$userId = 'CK101257942';
-$apiKey = 'S419L46X3135R9LM16NGX984GMUYH3TZ198H1TVALU3B0L6R39S829JH26OIFJ95';
-$apiUrl = 'https://www.nellobytesystems.com/APIAirtimeV1.asp';
-
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $phone = $_POST['phone'];
     $network = $_POST['network'];
@@ -78,10 +72,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $phoneNumber = preg_replace('/\D/', '', $phone);
 
     switch (strtolower($network)) {
-        case 'mtn': $network = "01"; break;
-        case 'glo': $network = "02"; break;
-        case '9mobile': $network = "03"; break;
-        case 'airtel': $network = "04"; break;
+        case 'mtn': $network = "mtn"; break;
+        case 'glo': $network = "glo"; break;
+        case '9mobile': $network = "9mobile"; break;
+        case 'airtel': $network = "airtel"; break;
         default:
             $_SESSION['warning'] = "Unknown network selected.";
             $_SESSION['num'] = $phone;
@@ -104,48 +98,121 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: airtime");
         exit();
        }else {
-                if ($amount >= 50 && $amount <= 2000) {
-            $requestUrl = $apiUrl . '?UserID=' . urlencode($userId) .
-                '&APIKey=' . urlencode($apiKey) .
-                '&MobileNetwork=' . urlencode($network) .
-                '&Amount=' . urlencode($amount) .
-                '&MobileNumber=' . urlencode($phone) .
-                '&CallBackURL=' . urlencode($callbackUrl);
+        if ($amount >= 50 && $amount <= 2000) {
+                    // Generate stable transactionsID
+        $uniq_id = "nomauglobalsub-" . uniqid();
 
-            $ch = curl_init();
-            curl_setopt($ch, CURLOPT_URL, $requestUrl);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+        // Prevent duplicate in PHP
+        $check = $pdo->prepare("SELECT trans_id FROM transactions WHERE trans_id = ?");
+        $check->execute([$uniq_id]);
+        if ($check->rowCount() > 0) {
+            $_SESSION['warning'] = "Duplicate transactions prevented.";
+            header("Location: airtime.php");
+            exit();
+        }
+            $request = [
+            'network' => $network,
+            'phone' => $phone,
+            'amount' => $amount
+        ];
 
-            $response = curl_exec($ch);
+$curl = curl_init();
+curl_setopt_array($curl, array(
+  CURLOPT_URL => 'https://gearoneplus.com.ng/api/v1/airtime',
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_ENCODING => '',
+  CURLOPT_MAXREDIRS => 10,
+  CURLOPT_TIMEOUT => 0,
+  CURLOPT_FOLLOWLOCATION => true,
+  CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+  CURLOPT_CUSTOMREQUEST => 'POST',
+  CURLOPT_POSTFIELDS => json_encode($request),
+  CURLOPT_HTTPHEADER => array(
+    'Authorization: Bearer cbeb0f55a9682b15eb957e5a3239e63fb0cf23df258a7d0de13a42a8d7b161f6',
+    'Content-Type: application/json'
+  ),
+));
 
-            if (curl_errno($ch)) {
-                $_SESSION['warning'] = 'An error occurred. Please try again later.';
-                $_SESSION['num'] = $phone;
-                $_SESSION['price']  = $amount;
-                header("Location: airtime");
-                exit();
-            } else {
-                $data = json_decode($response, true);
-                $orderId = $data['orderid'] ?? '';
+    $response = curl_exec($curl);
+    curl_close($curl);
 
-                if (!empty($orderId)) {
-                    $_SESSION['amount'] = $amount;
-                    $_SESSION['num'] = $phone;
-                    header("Location: airtime_comfirm?orderid=$orderId");
-                    exit();
-                } else {
-                    $_SESSION['warning'] = "An Internal Error Occurred!";
-                    $_SESSION['num'] = $phone;
-                    $_SESSION['price']  = $amount;
-                    header("Location: airtime");
-                    exit();
-                }
-            }
+    $res = json_decode($response);
 
-            curl_close($ch);
+    // echo "<pre>";
+    // var_dump($response);
+    // var_dump($res);
+    // exit;
+
+        $status = strtolower($res->status ?? '');
+        $status = $status ?: 'failed';
+        if (($status=='success')){
+        // Extract details
+        $number = $phone;
+        $date = date('Y-m-d H:i:s');
+        $amount_charge = isset($res->amount) ? floatval($res->amount) : floatval($amount); // default to 0 if missing
+        $profit = max(0, $amount - $amount_charge);  // now profit will be correct
+        $api_response = $res->message;
+        $create_at = date('Y-m-d H:i:s');
+        $prev_balance = $balance;
+        $newbalance = $balance - $amount;
+        $post_balance = $balance - $amount;
+        $type = "airtime";
+                $pdo->beginTransaction();
+
+try {
+    // Update balance
+    $stmt = $pdo->prepare("
+        UPDATE users 
+        SET balance = :balance
+        WHERE email = :email
+    ");
+    $stmt->execute([
+        'balance' => $newbalance,
+        'email'   => $email
+    ]);
+
+    // Insert transaction
+    $stmt = $pdo->prepare("
+        INSERT INTO transactions
+        (trans_id, category, amount, beneficiary, date, status, user_email,
+         api_response, network, profit, create_at, prev_balance, post_balance, type)
+        VALUES
+        (:trans_id, :category, :amount, :beneficiary, :date, :status, :user_email,
+         :api_response, :network, :profit, :create_at, :prev_balance, :post_balance, :type)
+    ");
+
+    $stmt->execute([
+        'trans_id'     => $uniq_id,
+        'category'     => $network,
+        'amount'       => $amount_charge,
+        'beneficiary'  => $number,
+        'date'         => $date,
+        'status'       => $status,
+        'user_email'   => $email,
+        'api_response' => $api_response,
+        'network'      => $network,
+        'profit'       => $profit,
+        'create_at'    => $create_at,
+        'prev_balance' => $prev_balance,
+        'post_balance' => $post_balance,
+        'type'         => $type
+    ]);
+
+    $pdo->commit(); // ✅ REQUIRED
+
+} catch (Exception $e) {
+    $pdo->rollBack();
+    $_SESSION['warning'] = "Transaction error: " . $e->getMessage();
+    header("Location: airtime.php");
+    exit();
+}
+
+    } else {
+        $_SESSION['warning'] = "Transaction failed.";
+        $_SESSION['no'] = $phone;
+        header("Location: airtime.php");
+        exit();
+    }
         } else {
             $_SESSION['warning'] = "Minimum purchase amount is ₦50 and maximum is ₦2000.";
             $_SESSION['num'] = $phone;
@@ -707,7 +774,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      <!-- <label for="username">Email Address</label> -->
                     <div class="input-wrapper">
                         <input type="text" id="phone" name="phone" placeholder="Enter Phone Number" oninput="detectNetwork()">
-                        <div class="input-icon"><i class="fas fa-phone" onclick="pickContact()"></i></div>
+                        <!-- <div class="input-icon"><i class="fas fa-phone" onclick="pickContact()"></i></div> -->
                     </div>
 
                 </div>
@@ -733,7 +800,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                
                 <button type="submit" name="submit" id="login-btn">Buy Airtime</button>
             </form>
-        </div>
+        </div><br><br><br>
     </div>
 <?php include("nav.php") ?>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -833,7 +900,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           Swal.fire({
               icon: "success",
               title: successMsg,
-              text: "We are fast and reliable"
+            //   text: "We are fast and reliable"
           });
           <?php unset($_SESSION['success']); ?>
       }
@@ -851,7 +918,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           Swal.fire({
               icon: "warning",
               title: warningMsg,
-              text: "Thank you for using our service"
+            //   text: "Thank you for using our service"
           });
           <?php unset($_SESSION['warning']); ?>
       }

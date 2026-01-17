@@ -478,7 +478,7 @@ $row = $stmt->fetch(PDO::FETCH_ASSOC);
                         <i class="fas fa-user"></i>
                         <span>Account Name:</span>
                     </div>
-                    <div class="detail-value"><?php echo $row['accountNumber']; ?></div>
+                    <div class="detail-value"><?php echo $row['accountName']; ?></div>
                 </div>
                 <div class="detail-row">
                     <div class="detail-label">
@@ -486,7 +486,7 @@ $row = $stmt->fetch(PDO::FETCH_ASSOC);
                         <span>Account Number:</span>
                     </div>
                     <div class="detail-value">
-                        <span id="accountNumber"><?php echo $row['accountName']; ?></span>
+                        <span id="accountNumber"><?php echo $row['accountNumber']; ?></span>
                         <button class="copy-btn" id="click">Copy</button>
                     </div>
                 </div>
@@ -505,7 +505,7 @@ $row = $stmt->fetch(PDO::FETCH_ASSOC);
                     </div>
                     <span class="service-name">Airtime</span>
                 </div>
-                <div class="service-item" id="buyData" onclick="window.location.href='data.php'">
+                <div class="service-item" id="buyData" onclick="window.location.href='data_bundle.php.php'">
                     <div class="service-icon">
                         <i class="fas fa-wifi"></i>
                     </div>
@@ -522,7 +522,7 @@ $row = $stmt->fetch(PDO::FETCH_ASSOC);
         </div>
 
         <!-- View All Transactions Button -->
-        <a href="#" class="view-all-btn" id="viewAllBtn">
+        <a href="transaction.php" class="view-all-btn" id="viewAllBtn">
             <i class="fas fa-list"></i> View All Transactions
         </a>
     </main>
@@ -553,7 +553,14 @@ $row = $stmt->fetch(PDO::FETCH_ASSOC);
             let account = document.getElementById("accountNumber").innerText;
             if(navigator.clipboard){
                 navigator.clipboard.writeText(account).then(() => {
-              alert("account copied successfully !");
+                swal.fire({
+                   icon : "success",
+                   text : "Account Number Copied ...",
+                  timer : 3000,
+                  showConfirmButton : false,
+              }).then(() => {
+                  window.location.href = window.location.href;
+              });
             })
             }else{
                 fallbackCopy(account);

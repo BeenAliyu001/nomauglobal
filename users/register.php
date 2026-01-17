@@ -1,5 +1,6 @@
 <?php
 session_start();
+error_reporting(0);
 require_once "config.php";
 $success = "";
 $error = "";
@@ -11,6 +12,7 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
     $username = sanitize_input($_POST['username']);
     $email = sanitize_input($_POST['email']);
     $phone = sanitize_input($_POST['phone']);
+    $pin = sanitize_input($_POST['pin']);
     $nin = sanitize_input($_POST['nin']);
     $password = sanitize_input($_POST['password']);
     $Cpassword = sanitize_input($_POST['Cpassword']);
@@ -32,6 +34,10 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
         $error = "NIN is required";
     }elseif (!preg_match('/^\d{11}$/', $nin)) {
          $error = "Invalid NIN Number. It should be 11 digits.";
+    }elseif (empty($pin)) {
+        $error = "PIN is required";
+    }elseif (!preg_match('/^\d{4}$/', $pin)) {
+    $error = "Transaction PIN must be exactly 4 digits.";
     }elseif (empty($password)) {
         $error = "Password is required !";
     }elseif (empty($Cpassword)) {
@@ -53,9 +59,9 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
                 "phoneNumber" => $phone,
                 "bankCode" => ["20867"],
                 "accountType" => "static",
-                "id_type" => "nin",
+                "id_type" => "bvn",
                 "id_number" => $nin,
-                "businessId" => "b9f024598d845ed736f8c248b8b616f5d2fdd62d"
+                "businessId" => "387d92cdcbba755a50e0e799dd0dda5c12661860"
             ];
             $jsonData = json_encode($data);
 
@@ -67,8 +73,8 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
                 CURLOPT_POSTFIELDS => $jsonData,
                 CURLOPT_HTTPHEADER => [
                     'Content-Type: application/json',
-                    'api-key: 0321570cb58a2c8392833d5c675b2dd0131b9b5d',
-                    'Authorization: Bearer 8dc4b2fc78f46a61ff4b1e80fa79d3042b929e88dfca30a78711b08b29fe77120b08ea87dda5431b74bd3c5f0611b096c8aff238829e5a9f7862f051'
+                    'api-key: e94fdec0e5fdd8ef13316be5efa1380fa98618f0',
+                    'Authorization: Bearer c603c5f6921d00b353bdb8964a1884b103d290a1c6173f64543f3d6f37931bb111ff9f82b089b8b4c940ab5dbda7d73185e47d1de343950e850e118b'
                 ],
             ]);
 
@@ -97,15 +103,16 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
 
                     // Insert with bank details
                     $stmt = $pdo->prepare('INSERT INTO users 
-                        (name, email, phone, accountName, bankName, accountNumber, balance, password) 
+                        (username, email, phone, pin, accountName, bankName, accountNumber, balance, password) 
                         VALUES 
-                        (:name, :email, :phone, :accountName, :bankName, :accountNumber, :balance, :password)'
+                        (:username, :email, :phone, :pin, :accountName, :bankName, :accountNumber, :balance, :password)'
                     );
 
                     $stmt->execute([
-                        'name' => $name,
+                        'username' => $username,
                         'email' => $email,
                         'phone' => $phone,
+                        'pin' => $pin, 
                         'accountName' => $accountName,
                         'bankName' => $bankName,
                         'accountNumber' => $accountNumber,
@@ -170,7 +177,7 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
 
         .container {
             width: 100%;
-            /* max-width: 480px; */
+            max-width: 480px;
             background-color: var(--white);
             border-radius: 16px;
             box-shadow: 0 10px 30px rgba(76, 175, 80, 0.1);
@@ -417,7 +424,7 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
         /* Responsive Design */
         @media (max-width: 576px) {
             .container {
-                max-width: 100%;
+                max-width: 90%;
             }
             
             .header {
@@ -474,7 +481,7 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
                 <div class="input-group">
                     <label for="username">Username</label>
                     <div class="input-wrapper">
-                        <input type="text" id="username" name="username" placeholder="Create unique username">
+                        <input type="text" id="username" name="username" placeholder="Create unique username" value="<?php echo $username; ?>">
                         <!-- <div class="input-icon">
                             <i class="fas fa-user"></i>
                         </div> -->
@@ -484,7 +491,7 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
                 <div class="input-group">
                     <label for="email">Email Address</label>
                     <div class="input-wrapper">
-                        <input type="email" id="email" name="email" placeholder="Enter your email address">
+                        <input type="email" id="email" name="email" placeholder="Enter your email address" value="<?php echo $email; ?>">
                         <!-- <div class="input-icon">
                             <i class="fas fa-envelope"></i>
                         </div> -->
@@ -494,7 +501,17 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
                 <div class="input-group">
                     <label for="phone">Phone Number</label>
                     <div class="input-wrapper">
-                        <input type="text" id="phone" name="phone" placeholder="Enter your phone number">
+                        <input type="text" id="phone" name="phone" placeholder="Enter your phone number" value="<?php echo $phone; ?>">
+                        <!-- <div class="input-icon">
+                            <i class="fas fa-phone"></i>
+                        </div> -->
+                    </div>
+                </div>
+
+                 <div class="input-group">
+                    <label for="phone">Set 4 digit PIN</label>
+                    <div class="input-wrapper">
+                        <input type="number" id="pin" name="pin" minlength="4" maxlength="4" placeholder="Create 4 digit PIN" value="<?php echo $pin; ?>">
                         <!-- <div class="input-icon">
                             <i class="fas fa-phone"></i>
                         </div> -->
@@ -504,7 +521,7 @@ if($_SERVER["REQUEST_METHOD"] === "POST"){
                 <div class="input-group">
                     <label for="nin">NIN Number</label>
                     <div class="input-wrapper">
-                        <input type="number" id="nin" name="nin" placeholder="Enter your nin">
+                        <input type="number" id="nin" name="nin" placeholder="Enter your nin" value="<?php echo $nin; ?>">
                         <!-- <div class="input-icon">
                             <i class="fas fa-id-card"></i>
                         </div> -->
