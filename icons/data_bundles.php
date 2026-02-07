@@ -136,7 +136,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['purchase'])) {
     if (!$api) {
         $_SESSION['warning'] = "Invalid bundle selected.";
         $_SESSION['no'] = $phone;
-        header("Location: data_bundle.php");
+        header("Location: data_bundles.php");
         exit();
     }
     $price = $api['amount'];
@@ -147,21 +147,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['purchase'])) {
       if($userData['pin'] == ""){
          $_SESSION['warn'] = "PIN not set .";
         $_SESSION['no'] = $phone;
-        header("Location: data_bundle.php");
+        header("Location: data_bundles.php");
         exit();
 }
 
     if($pin != $userData['pin']){
          $_SESSION['warning'] = "Incorrect PIN used.";
         $_SESSION['no'] = $phone;
-        header("Location: data_bundle.php");
+        header("Location: data_bundles.php");
         exit();
 }
 
 if ($price > $balance) {
     $_SESSION['warning'] = "Insufficient Funds";
     $_SESSION['no'] = $phone;
-    header("Location: data_bundle.php");
+    header("Location: data_bundles.php");
     exit();
 }
     $networkMap = [
@@ -175,7 +175,7 @@ $selectedNetworkKey = strtolower($network); // use the original string for key c
 if (!array_key_exists($selectedNetworkKey, $networkMap)) {
     $_SESSION['warning'] = "Invalid network selection.";
     $_SESSION['no'] = $phone;
-    header("Location: data_bundle.php");
+    header("Location: data_bundles.php");
     exit();
 }
 
@@ -190,7 +190,7 @@ $selectedNetwork = $networkMap[$selectedNetworkKey]; // now safe to map
     $check->execute([$uniq_id]);
     if ($check->rowCount() > 0) {
         $_SESSION['warning'] = "Duplicate transactions prevented.";
-        header("Location: data_bundle.php");
+        header("Location: data_bundles.php");
         exit();
     }
 
@@ -276,19 +276,19 @@ if ($isSuccess) {
         $pdo->commit();
 
         $_SESSION['success'] = "Data purchase successful.";
-        header("Location: data_bundle.php");
+        header("Location: data_bundles.php");
         exit();
 
     } catch (Throwable $e) {
         $pdo->rollBack();
         $_SESSION['warning'] = "Transaction error.";
-        header("Location: data_bundle.php");
+        header("Location: data_bundles.php");
         exit();
     }
 
 } else {
     $_SESSION['warning'] = $res['message'] ?? "Transaction failed.";
-    header("Location: data_bundle.php");
+    header("Location: data_bundles.php");
     exit();
 }  
 }

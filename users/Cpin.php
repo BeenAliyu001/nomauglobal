@@ -24,9 +24,13 @@ if($_SERVER['REQUEST_METHOD'] === 'POST')
     $error = "Invalid email format";
   }elseif(empty($password)) {
     $error = "PIN is required !";
-   }elseif(empty($Cpassword)) {
+   }elseif (!preg_match('/^\d{4}$/', $password)) {
+    $error = "Transaction PIN must be exactly 4 digits.";
+    }elseif(empty($Cpassword)) {
     $error = "Confirm PIN is required !";
-   }elseif($password !== $Cpassword) {
+   }elseif (!preg_match('/^\d{4}$/', $Cpassword)) {
+    $error = "Transaction PIN must be exactly 4 digits.";
+    }elseif($password !== $Cpassword) {
     $error = "PIN does not match !";
    }else{
      if($user > 0){

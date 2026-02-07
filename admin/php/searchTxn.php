@@ -1,15 +1,122 @@
 <?php
 session_start();
-include 'config.php';
-if (!isset($_SESSION['email'])) {
-    header("Location: ../index.php");
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
+require_once "config.php";
+
+// Check if user is logged in and is an admin
+if (!isset($_SESSION['user_id']) || !isset($_SESSION['is_admin']) || !$_SESSION['is_admin']) {
+    header("Location: ../../../index.php");
     exit();
 }
-$user_id = $_SESSION['email'];
 
-$stmt = $pdo->prepare("SELECT * FROM transactions WHERE user_email = ? ORDER BY create_at DESC");
-$stmt->execute([$user_id]);
-$transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+// Get admin user data
+$admin_id = $_SESSION['user_id'];
+$query = $pdo->prepare("SELECT id, username, email, phone FROM admins WHERE id = ?");
+$query->execute([$admin_id]);
+$admin = $query->fetch(PDO::FETCH_ASSOC);
+
+// Check if admin exists
+if (!$admin) {
+    // If no admin found, log out the user
+    session_destroy();
+    header("Location: ../../../index.php");
+    exit();
+}
+
+// Initialize variables
+$user_id = "";
+$name = "";
+$user_transactions = [];
+$user_details = null;
+$search_performed = false;
+
+// Handle search form submission
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $user_id = trim($_POST['user_id'] ?? '');
+    $name = trim($_POST['username'] ?? '');
+    $search_performed = true;
+    
+    // Build query based on search parameters
+    $sql = "SELECT t.*, u.username, u.username 
+            FROM transactions t 
+            INNER JOIN users u ON t.user_email = u.email
+            WHERE 1=1";
+    $params = [];
+    
+    if (!empty($user_id)) {
+        $sql .= " AND t.user_email = ?";
+        $params[] = $user_id;
+    }
+    
+    if (!empty($name)) {
+        $sql .= " AND u.username LIKE ?";
+        $params[] = "%$name%";
+    }
+    
+    $sql .= " ORDER BY t.type DESC";
+    
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $user_transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Get user details if we found transactions
+    if (!empty($user_transactions)) {
+        $user_details = [
+            'id' => $user_transactions[0]['u_id'],
+            'username' => $user_transactions[0]['username'],
+            'username' => $user_transactions[0]['username']
+        ];
+    } elseif (!empty($user_id) || !empty($username)) {
+        // Try to get user details even if no transactions found
+        $user_sql = "SELECT id, username FROM users WHERE 1=1";
+        $user_params = [];
+        
+        if (!empty($user_id)) {
+            $user_sql .= " AND id = ?";
+            $user_params[] = $user_id;
+        }
+        
+        if (!empty($name)) {
+            $user_sql .= " AND name LIKE ?";
+            $user_params[] = "%$name%";
+        }
+        
+        $user_stmt = $pdo->prepare($user_sql);
+        $user_stmt->execute($user_params);
+        $user_result = $user_stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($user_result) {
+            $user_details = $user_result;
+        }
+    }
+}
+
+// Get dashboard statistics
+$user_count_query = $pdo->query("SELECT COUNT(*) as total_users FROM users");
+$user_count = $user_count_query->fetch(PDO::FETCH_ASSOC)['total_users'];
+
+$tr_count_query = $pdo->query("SELECT COUNT(*) as total_trx FROM transactions");
+$tr_count = $tr_count_query->fetch(PDO::FETCH_ASSOC)['total_trx'];
+
+$s_count_query = $pdo->query("SELECT COUNT(*) as total_success FROM transactions WHERE status != 'pending'");
+$s_count = $s_count_query->fetch(PDO::FETCH_ASSOC)['total_success'];
+
+$p_count_query = $pdo->query("SELECT COUNT(*) as total_pending FROM transactions WHERE status = 'pending'");
+$p_count = $p_count_query->fetch(PDO::FETCH_ASSOC)['total_pending'];
+
+$a_count_query = $pdo->query("SELECT COUNT(*) as total_airtrx FROM transactions WHERE type = 'airtime'");
+$a_count = $a_count_query->fetch(PDO::FETCH_ASSOC)['total_airtrx'];
+
+$d_count_query = $pdo->query("SELECT COUNT(*) as total_datatrx FROM transactions WHERE type = 'data'");
+$d_count = $d_count_query->fetch(PDO::FETCH_ASSOC)['total_datatrx'];
+
+// Total profit
+$stmt = $pdo->query("SELECT SUM(profit) AS total_profit FROM transactions");
+$row = $stmt->fetch(PDO::FETCH_ASSOC);
+$total_profit = $row['total_profit'] ?? 0;
 ?>
 
 <!DOCTYPE html>
@@ -17,7 +124,7 @@ $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Transaction History - nomauglobalsub</title>
+    <title>User Transaction Analysis - Normauglobalsub Sub</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         * {
@@ -30,7 +137,7 @@ $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
         :root {
             --primary: #4CAF50;
             --primary-dark: #8BC34A;
-            --secondary: #64748b;
+            --secondary: #388E3C;
             --light: #f8fafc;
             --dark: #1e293b;
             --border: #e2e8f0;
@@ -41,7 +148,7 @@ $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
         }
         
         body {
-            background: linear-gradient(120deg, var(--primary), var(--primary-dark));
+            background: linear-gradient(120deg, #f0f9ff, #e0f2fe);
             color: var(--dark);
             line-height: 1.6;
             padding: 15px;
@@ -120,14 +227,14 @@ $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
         .dashboard-cards {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 35px;
+            gap: 15px;
             margin-bottom: 20px;
         }
         
         .card {
             background: white;
             border-radius: 10px;
-            padding: 25px;
+            padding: 15px;
             box-shadow: var(--card-shadow);
             display: flex;
             flex-direction: column;
@@ -158,6 +265,106 @@ $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
             font-size: 18px;
             font-weight: 700;
             color: var(--dark);
+        }
+        
+        .search-section {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: var(--card-shadow);
+            margin-bottom: 20px;
+        }
+        
+        .search-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: var(--primary);
+        }
+        
+        .search-form {
+            display: grid;
+            grid-template-columns: 1fr 1fr auto;
+            gap: 15px;
+            align-items: end;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .form-label {
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 5px;
+            color: var(--secondary);
+        }
+        
+        .form-input {
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        
+        .btn {
+            display: inline-block;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-weight: 600;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 14px;
+            border: none;
+        }
+        
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: var(--primary-dark);
+        }
+        
+        .user-details {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: var(--card-shadow);
+            margin-bottom: 20px;
+            display: <?= $user_details ? 'block' : 'none' ?>;
+        }
+        
+        .user-details-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: var(--primary);
+        }
+        
+        .user-info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        
+        .info-item {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .info-label {
+            font-size: 12px;
+            color: var(--secondary);
+            margin-bottom: 5px;
+        }
+        
+        .info-value {
+            font-size: 16px;
+            font-weight: 600;
         }
         
         .transactions-table {
@@ -340,26 +547,6 @@ $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
             background: #f8fafc;
         }
         
-        .btn {
-            display: inline-block;
-            padding: 8px 12px;
-            border-radius: 8px;
-            font-weight: 600;
-            text-decoration: none;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-size: 13px;
-        }
-        
-        .btn-primary {
-            background: var(--primary);
-            color: white;
-        }
-        
-        .btn-primary:hover {
-            background: var(--primary-dark);
-        }
-        
         .btn-sm {
             padding: 6px 10px;
             font-size: 12px;
@@ -430,6 +617,10 @@ $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 grid-template-columns: repeat(2, 1fr);
             }
             
+            .search-form {
+                grid-template-columns: 1fr;
+            }
+            
             .table-header {
                 padding: 12px;
             }
@@ -488,25 +679,10 @@ $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
             .page-title {
                 font-size: 20px;
             }
-        }
-        @media(max-width: 700px){
-            .dashboard-cards {
-            display: flex;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            margin-bottom: 10px;
-        }
-        
-        .card {
-            background: white;
-            border-radius: 10px;
-            padding: 15px;
-            width: 40%;
-
-            box-shadow: var(--card-shadow);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
+            
+            .user-info-grid {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
@@ -514,42 +690,39 @@ $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <div class="container">
         <header>
             <div class="logo">
-                <!-- <div class="logo-icon">
+                <div class="logo-icon">
                     <i class="fas fa-wifi"></i>
-                </div> -->
-                <i class="fas fa-arrow-left" id="back" style="color:lightgreen;"></i><div class="logo-text">My Transactions History</div>
-                <script>
-                    document.getElementById("back").addEventListener("click", function(){
-                        window.location.href="dashboard.php";
-;                    });
-                </script>
+                </div>
+                <div class="logo-text">Nomauglobal sub</div>
             </div>
             <div class="user-info">
-                <!-- <div class="user-avatar">
-                    <?php 
-                        // Get first letter of username for avatar
-                        if(isset($_SESSION['user_email'])) {
-                            $stmt = $pdo->prepare("SELECT name FROM users WHERE id = ?");
-                            $stmt->execute([$_SESSION['user_email']]);
-                            $user = $stmt->fetch(PDO::FETCH_ASSOC);
-                            echo strtoupper(substr($user['username'], 0, 1));
-                        }
-                    ?>
-                </div> -->
-                <!-- <a href="dashboard.php" class="btn btn-outline">Back to Dashboard</a> -->
+                <div class="user-avatar">
+                    <?= strtoupper(substr($admin['username'], 0, 1)) ?>
+                </div>
+                <a href="dashboard.php" class="btn btn-primary">Back to Dashboard</a>
             </div>
         </header>
         
-        <!-- <h1 class="page-title">My Transactions History</h1> -->
+        <h1 class="page-title">User Transaction Analysis</h1>
         
-        <!-- <div class="dashboard-cards">
+        <div class="dashboard-cards">
+            <div class="card">
+                <div class="card-icon">
+                    <i class="fas fa-users"></i>
+                </div>
+                <div>
+                    <div class="card-title">Total Users</div>
+                    <div class="card-value"><?= $user_count ?></div>
+                </div>
+            </div>
+            
             <div class="card">
                 <div class="card-icon">
                     <i class="fas fa-exchange-alt"></i>
                 </div>
                 <div>
                     <div class="card-title">Total Transactions</div>
-                    <div class="card-value"><?php echo count($transactions); ?></div>
+                    <div class="card-value"><?= $tr_count ?></div>
                 </div>
             </div>
             
@@ -559,38 +732,64 @@ $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 </div>
                 <div>
                     <div class="card-title">Successful</div>
-                    <div class="card-value">
-                        <?php 
-                            $successful = array_filter($transactions, function($txn) {
-                                return $txn['status'] != 'pending';
-                            });
-                            echo count($successful);
-                        ?>
-                    </div>
+                    <div class="card-value"><?= $s_count ?></div>
                 </div>
             </div>
             
             <div class="card">
                 <div class="card-icon">
-                    <i class="fas fa-hourglass-half"></i>
+                    <i class="fas fa-money-bill-wave"></i>
                 </div>
                 <div>
-                    <div class="card-title">Pending</div>
-                    <div class="card-value">
-                        <?php 
-                            $pending = array_filter($transactions, function($txn) {
-                                return $txn['status'] === 'pending';
-                            });
-                            echo count($pending);
-                        ?>
-                    </div>
+                    <div class="card-title">Total Profit</div>
+                    <div class="card-value">₦ <?= $total_profit ?></div>
                 </div>
             </div>
         </div>
-         -->
+        
+        <div class="search-section">
+            <h2 class="search-title">Search User Transactions</h2>
+            <form method="POST" class="search-form">
+                <div class="form-group">
+                    <label class="form-label">User ID</label>
+                    <input type="text" name="user_id" class="form-input" placeholder="Enter user ID" value="<?= htmlspecialchars($user_id) ?>">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">name</label>
+                    <input type="text" name="name" class="form-input" placeholder="Enter name" value="<?= htmlspecialchars($name) ?>">
+                </div>
+                <div class="form-group">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-search"></i> Search
+                    </button>
+                </div>
+            </form>
+        </div>
+        
+        <?php if ($user_details): ?>
+        <div class="user-details">
+            <h2 class="user-details-title">User Information</h2>
+            <div class="user-info-grid">
+                <div class="info-item">
+                    <span class="info-label">User ID</span>
+                    <span class="info-value"><?= $user_details['id'] ?></span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Full Name</span>
+                    <span class="info-value"><?= $user_details['username'] ?></span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Total Transactions</span>
+                    <span class="info-value"><?= count($user_transactions) ?></span>
+                </div>
+            </div>
+        </div>
+        <?php endif; ?>
+        
+        <?php if ($search_performed): ?>
         <div class="transactions-table">
             <div class="table-header">
-                <h2 class="table-title">All Transactions</h2>
+                <h2 class="table-title">User Transactions</h2>
                 <div class="search-box">
                     <i class="fas fa-search"></i>
                     <input type="text" placeholder="Search transactions..." id="searchInput">
@@ -599,31 +798,34 @@ $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             <div class="filters">
                 <button class="filter-btn active" data-filter="all">All</button>
+                <button class="filter-btn" data-filter="success">Successful</button>
+                <button class="filter-btn" data-filter="pending">Pending</button>
+                <button class="filter-btn" data-filter="failed">Failed</button>
                 <button class="filter-btn" data-filter="airtime">Airtime</button>
                 <button class="filter-btn" data-filter="data">Data</button>
             </div>
             
             <!-- Mobile View: Card Layout -->
             <div class="transactions-list" id="transactionsList">
-                <?php if (count($transactions) > 0): ?>
-                    <?php foreach ($transactions as $txn): ?>
+                <?php if (count($user_transactions) > 0): ?>
+                    <?php foreach ($user_transactions as $txn): ?>
                     <div class="transaction-card <?= $txn['status'] ?>">
                         <div class="card-row">
                             <span class="card-label">Reference:</span>
-                            <span class="card-value"><?= $txn['trans_id'] ?></span>
+                            <span class="card-value"><?= $txn['reference'] ?></span>
                         </div>
                         <div class="card-row">
                             <span class="card-label">Type:</span>
                             <span class="card-value"><?= ucfirst($txn['type']) ?></span>
                         </div>
-                        <!-- <div class="card-row">
+                        <div class="card-row">
                             <span class="card-label">Network:</span>
-                            <span class="card-value"><?= $txn['category'] ?></span>
+                            <span class="card-value"><?= $txn['network'] ?></span>
                         </div>
                         <div class="card-row">
                             <span class="card-label">Phone:</span>
-                            <span class="card-value"><?= $txn['beneficiary'] ?></span>
-                        </div> -->
+                            <span class="card-value"><?= $txn['phone'] ?></span>
+                        </div>
                         <div class="card-row">
                             <span class="card-label">Amount:</span>
                             <span class="card-value card-amount">₦<?= number_format($txn['amount'], 2) ?></span>
@@ -638,7 +840,7 @@ $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         </div>
                         <div class="card-row">
                             <span class="card-label">Date:</span>
-                            <span class="card-value"><?= date('M j, Y g:i A', strtotime($txn['create_at'])) ?></span>
+                            <span class="card-value"><?= date('M j, Y g:i A', strtotime($txn['created_at'])) ?></span>
                         </div>
                         <div class="card-row" style="margin-top: 15px; margin-bottom: 0;">
                             <span></span>
@@ -651,25 +853,21 @@ $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 <?php else: ?>
                 <div class="empty-state">
                     <i class="fas fa-receipt"></i>
-                    <h3>No transactions yet</h3>
-                    <p>Your transaction history will appear here once you make a purchase.</p>
-                    <a href="airtime.php" class="btn btn-primary" style="margin-top: 15px;">
-                        <i class="fas fa-shopping-cart"></i> Buy Airtime
-                    </a>
+                    <h3>No transactions found</h3>
+                    <p>No transactions match your search criteria.</p>
                 </div>
                 <?php endif; ?>
             </div>
             
             <!-- Desktop View: Table Layout -->
             <div class="table-container">
-                <?php if (count($transactions) > 0): ?>
+                <?php if (count($user_transactions) > 0): ?>
                 <table>
                     <thead>
                         <tr>
                             <th>Ref</th>
                             <th>Type</th>
                             <th>Network</th>
-                            <th>Phone</th>
                             <th>Amount</th>
                             <th>Status</th>
                             <th>Date</th>
@@ -677,12 +875,11 @@ $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach ($transactions as $txn): ?>
+                        <?php foreach ($user_transactions as $txn): ?>
                         <tr>
                             <td><?= $txn['trans_id'] ?></td>
                             <td><?= ucfirst($txn['type']) ?></td>
                             <td><?= $txn['category'] ?></td>
-                            <td><?= $txn['beneficiary'] ?></td>
                             <td>₦<?= number_format($txn['amount'], 2) ?></td>
                             <td>
                                 <span class="status status-<?= $txn['status'] ?>">
@@ -702,15 +899,22 @@ $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 <?php else: ?>
                 <div class="empty-state">
                     <i class="fas fa-receipt"></i>
-                    <h3>No transactions yet</h3>
-                    <p>Your transaction history will appear here once you make a purchase.</p>
-                    <a href="airtime.php" class="btn btn-primary" style="margin-top: 15px;">
-                        <i class="fas fa-shopping-cart"></i> Buy Airtime
-                    </a>
+                    <h3>No transactions found</h3>
+                    <p>No transactions match your search criteria.</p>
                 </div>
                 <?php endif; ?>
             </div>
+            
+            <?php if (count($user_transactions) > 0): ?>
+            <div class="pagination">
+                <div class="pagination-btn active">1</div>
+                <div class="pagination-btn">2</div>
+                <div class="pagination-btn">3</div>
+                <div class="pagination-btn">></div>
+            </div>
+            <?php endif; ?>
         </div>
+        <?php endif; ?>
     </div>
 
     <script>
@@ -722,25 +926,27 @@ $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
             const searchInput = document.getElementById('searchInput');
             
             // Filter button functionality
-            filterButtons.forEach(button => {
-                button.addEventListener('click', function() {
-                    const filter = this.getAttribute('data-filter');
-                    
-                    // Update active state
-                    filterButtons.forEach(btn => btn.classList.remove('active'));
-                    this.classList.add('active');
-                    
-                    // Filter table rows
-                    tableRows.forEach(row => {
-                        filterRow(row, filter);
-                    });
-                    
-                    // Filter transaction cards
-                    transactionCards.forEach(card => {
-                        filterCard(card, filter);
+            if (filterButtons.length > 0) {
+                filterButtons.forEach(button => {
+                    button.addEventListener('click', function() {
+                        const filter = this.getAttribute('data-filter');
+                        
+                        // Update active state
+                        filterButtons.forEach(btn => btn.classList.remove('active'));
+                        this.classList.add('active');
+                        
+                        // Filter table rows
+                        tableRows.forEach(row => {
+                            filterRow(row, filter);
+                        });
+                        
+                        // Filter transaction cards
+                        transactionCards.forEach(card => {
+                            filterCard(card, filter);
+                        });
                     });
                 });
-            });
+            }
             
             // Filter function for table rows
             function filterRow(row, filter) {
@@ -785,19 +991,21 @@ $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
             }
             
             // Search functionality
-            searchInput.addEventListener('input', function() {
-                const searchTerm = this.value.toLowerCase();
-                
-                // Search in table rows
-                tableRows.forEach(row => {
-                    searchRow(row, searchTerm);
+            if (searchInput) {
+                searchInput.addEventListener('input', function() {
+                    const searchTerm = this.value.toLowerCase();
+                    
+                    // Search in table rows
+                    tableRows.forEach(row => {
+                        searchRow(row, searchTerm);
+                    });
+                    
+                    // Search in transaction cards
+                    transactionCards.forEach(card => {
+                        searchCard(card, searchTerm);
+                    });
                 });
-                
-                // Search in transaction cards
-                transactionCards.forEach(card => {
-                    searchCard(card, searchTerm);
-                });
-            });
+            }
             
             // Search function for table rows
             function searchRow(row, searchTerm) {

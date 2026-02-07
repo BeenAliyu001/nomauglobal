@@ -52,23 +52,20 @@ function detectNetwork($phone) {
 // Function to get bundle types from database
 function getBundleTypes($network, $pdo) {
     $stmt = $pdo->prepare("
-        SELECT DISTINCT category 
-        FROM data_plans 
+        SELECT DISTINCT size
+        FROM dataplan 
         WHERE network = ? AND status = 'available'
-        ORDER BY category
+        ORDER BY size
     ");
     $stmt->execute([$network]);
     return $stmt->fetchAll(PDO::FETCH_COLUMN);
 }
 
-
 function getBundles($network, $type, $pdo) {
     $stmt = $pdo->prepare("
-         SELECT plan_id, quantity, validity, amount
-        FROM data_plans
-        WHERE network = ?
-          AND category = ?
-          AND status = 'available'
+        SELECT planID, size, amount, planType
+        FROM dataplan
+        WHERE network = ? AND size = ? AND status = 'available'
         ORDER BY amount ASC
     ");
     $stmt->execute([$network, $type]);
@@ -128,7 +125,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['purchase'])) {
     $network = $_POST['network'];
     $bundle_id = (int) $_POST['selectedBundle'];
     $api_stmt = $pdo->prepare(
-        "SELECT plan_id, amount FROM data_plans WHERE plan_id = ? LIMIT 1"
+        "SELECT planType, amount FROM dataplan WHERE planID = ? LIMIT 1"
     );
     $api_stmt->execute([$bundle_id]);   // ← THIS WAS MISSING
     $api = $api_stmt->fetch(PDO::FETCH_ASSOC);
@@ -196,109 +193,121 @@ $selectedNetwork = $networkMap[$selectedNetworkKey]; // now safe to map
 
      // Prepare API request
    $request = [
-            // 'network' => $selectedNetwork,
-            'plan'=> $bundle_id,
-            'mobile_number' => $phone,
+            'network' => $selectedNetwork,
+            'phone' => $phone,
+            'plan_id'=> $bundle_id,
         ];
 
-        $curl = curl_init();
-        curl_setopt_array($curl, array(
-        CURLOPT_URL => 'https://api.rgcdata.com.ng/api/v2/purchase/data',
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_ENCODING => '',
-        CURLOPT_MAXREDIRS => 10,
-        CURLOPT_TIMEOUT => 20,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-        CURLOPT_CUSTOMREQUEST => 'POST',
-        CURLOPT_POSTFIELDS => json_encode($request),
-        CURLOPT_HTTPHEADER => array(
-            'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2UiOiJhcGkiLCJpZCI6NDAwMCwiZHNpIjoiOTg1Mzg1ODc3NzI1OTgyODUxODgiLCJpYXQiOjE3Njk4MjgwMzUsImV4cCI6MjA1Mzc1NjI1NCwiaXNzIjoiUmdjZGF0YSJ9.DmXMEObt9uQPriPZMHYJArerlhq3wgNlSXcJW6V8hGo',
-            'Content-Type: application/json'
-        ),
-        ));
+         $curl = curl_init();
+curl_setopt_array($curl, array(
+  CURLOPT_URL => 'https://gearoneplus.com.ng/api/v1/data',
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_ENCODING => '',
+  CURLOPT_MAXREDIRS => 10,
+  CURLOPT_TIMEOUT => 0,
+  CURLOPT_FOLLOWLOCATION => true,
+  CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+  CURLOPT_CUSTOMREQUEST => 'POST',
+  CURLOPT_POSTFIELDS => json_encode($request),
+  CURLOPT_HTTPHEADER => array(
+    'Authorization: Bearer cbeb0f55a9682b15eb957e5a0cf23df258a7d0de13a42a8d7b161f6',
+    'Content-Type: application/json'
+  ),
+));
 
     $response = curl_exec($curl);
     curl_close($curl);
 
-    $res = json_decode($response, true);
+    $res = json_decode($response);
 
-       $isSuccess =
-    (isset($res['status']) && strtolower($res['status']) === 'success') ||
-    (isset($res['success']) && $res['success'] === true);
+    // echo "<pre>";
+    // var_dump($response);
+    // var_dump($res);
+    // exit;
 
-if ($isSuccess) {
-    $newbalance = $balance - $price;
+        $status = strtolower($res->status ?? '');
+        $status = $status ?: 'failed';
+        if (in_array($status, ['success', 'pending', 'processing'])){
+        // Extract details
+        $number = $res->mobile_number ?? $phone;
+        $date = date('Y-m-d H:i:s');
+        $amount = isset($res->amount) ? (float)$res->amount : 0; // default to 0 if missing
+        $profit = max(0, $price - $amount);  // now profit will be correct
+        $plan_name = $res->plan_name ?? '';
+        $network_plan = $res->plan_network ?? $network;
+        $plan = $network_plan . " " . $plan_name;
+        $api_response = $res->api_response ?? '';
+        $create_at = date('Y-m-d H:i:s');
+        $prev_balance = $balance;
+        $post_balance = $balance - $price;
+        $type = "data";
+                  $pdo->beginTransaction();
+                try {
+            // Update user balance
+            $newbalance = floatval($balance) - floatval($price);
+            $stmt = $pdo->prepare("UPDATE users 
+                                   SET balance = :balance
+                                   WHERE email = :email");
+            $stmt->execute([
+                'balance' => $newbalance,
+                'email' => $email
+            ]);
 
-    $pdo->beginTransaction();
+            // Insert transaction
+            $sql = "INSERT INTO transactions
+                (trans_id, category, amount, beneficiary, date, status, user_email, api_response, network, profit, create_at, prev_balance, post_balance, type)
+                VALUES 
+                (:trans_id, :category, :amount, :beneficiary, :date, :status, :user_email, :api_response, :network, :profit, :create_at, :prev_balance, :post_balance, :type)";
+            $stmt = $pdo->prepare($sql);
 
-    try {
-        // Debit wallet
-        $stmt = $pdo->prepare("
-            UPDATE users 
-            SET balance = :balance 
-            WHERE email = :email
-        ");
-        $stmt->execute([
-            'balance' => $newbalance,
-            'email'   => $email
-        ]);
+            $stmt->execute([
+                'trans_id' => $uniq_id,
+                'category' => $plan,
+                'amount' => $price,
+                'beneficiary' => $number,
+                'date' => $date,
+                'status' => $status,
+                'user_email' => $email,
+                'api_response' => $api_response,
+                'network' => $network_plan,
+                'profit' => $profit,
+                'create_at' => $create_at,
+                'prev_balance' => $prev_balance,
+                'post_balance' => $post_balance,
+                'type' => $type
+            ]);
 
-        // Log transaction
-        $stmt = $pdo->prepare("
-            INSERT INTO transactions
-            (trans_id, category, amount, beneficiary, date, status,
-             user_email, api_response, network, profit,
-             create_at, prev_balance, post_balance, type)
-            VALUES
-            (:trans_id, :category, :amount, :beneficiary, :date, :status,
-             :user_email, :api_response, :network, :profit,
-             :create_at, :prev_balance, :post_balance, :type)
-        ");
+            // Success
+            $pdo->commit();
+            $_SESSION['success'] = "Purchase successful.";
+            $_SESSION['no'] = $phone;
+            header("Location: data_bundle.php");
+            exit();
 
-        $stmt->execute([
-            'trans_id'     => $uniq_id,
-            'category'     => $network,
-            'amount'       => $price,
-            'beneficiary'  => $number,
-            'date'         => $date,
-            'status'       => 'success',
-            'user_email'   => $email,
-            'api_response' => json_encode($res),
-            'network'      => $network,
-            'profit'       => $profit,
-            'create_at'    => $create_at,
-            'prev_balance' => $balance,
-            'post_balance' => $newbalance,
-            'type'         => 'data'
-        ]);
+        } catch (PDOException $e) {
 
-        $pdo->commit();
+            $pdo->rollBack();
 
-        $_SESSION['success'] = "Data purchase successful.";
+            $_SESSION['warning'] = "Transaction failed. Amount refunded.";
+            $_SESSION['no'] = $phone;
+            header("Location: data_bundle.php");
+            exit();
+        }
+    } else {
+        $_SESSION['warning'] = $res->message ?? "Transaction failed.";
+        $_SESSION['no'] = $phone;
         header("Location: data_bundle.php");
         exit();
-
-    } catch (Throwable $e) {
-        $pdo->rollBack();
-        $_SESSION['warning'] = "Transaction error.";
-        header("Location: data_bundle.php");
-        exit();
-    }
-
-} else {
-    $_SESSION['warning'] = $res['message'] ?? "Transaction failed.";
-    header("Location: data_bundle.php");
-    exit();
-}  
+    }      
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Buy Data Bundle - nomauglobal sub</title>
+    <title>Buy Data Bundle - Smart Sub</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         * {
@@ -700,7 +709,7 @@ input[type="radio"] {
                 <!-- Bundle Type Selection -->
                 <div class="input-group">
                     <!-- <label for="bundleType">Select Bundle Type:</label> -->
-                    <select id="bundleType" name="category" onchange="loadBundles()" disabled>
+                    <select id="bundleType" name="bundleType" onchange="loadBundles()" disabled>
                         <option value="">-- Select a network first --</option>
                     </select>
                 </div>
@@ -734,8 +743,8 @@ input[type="radio"] {
     </div>
     <?php include('nav.php'); ?>
 
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script>
 // SweetAlert notifications
 var messageText2 = "<?= $_SESSION['success']?? ''; ?>";
 if(messageText2 != ''){
@@ -926,8 +935,8 @@ function loadBundles() {
                 const input = document.createElement('input');
                 input.type = 'text';
                 input.readOnly = true;
-                input.value = `${bundle.quantity} - ₦${bundle.amount}`;
-                input.dataset.id = bundle.plan_id;
+                input.value = `${bundle.planType} - ₦${bundle.amount}`;
+                input.dataset.id = bundle.planID;
                 input.dataset.amount = bundle.amount;
                 
                 // On click → select bundle
@@ -936,7 +945,7 @@ function loadBundles() {
                         el.classList.remove('selected');
                     });
                     wrapper.classList.add('selected');
-                    document.getElementById('selectedBundle').value = bundle.plan_id;
+                    document.getElementById('selectedBundle').value = bundle.planID;
                     document.getElementById('buy-btn').disabled = false;
                 });
                 
@@ -954,6 +963,8 @@ function loadBundles() {
 }
 
 // Function to simulate contact picker (for demonstration)
+</script>
+       <script>
         async function pickContact() {
     try {
         const contacts = await navigator.contacts.select(['name', 'tel'], { multiple: false });
@@ -965,6 +976,6 @@ function loadBundles() {
     }
 }
 
-    </script> 
+    </script>
 </body>
 </html>

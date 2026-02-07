@@ -11,12 +11,12 @@ if (!isset($_SESSION['email'])) {
 }
 
 // Auto-logout after 30 minutes
-// if (isset($_SESSION['login']) && time() - $_SESSION['login'] > 1800) {
-//     session_unset();
-//     session_destroy();
-//     header('Location: ../index.php');
-//     exit();
-// }
+if (isset($_SESSION['login']) && time() - $_SESSION['login'] > 1800) {
+    session_unset();
+    session_destroy();
+    header('Location: ../index.php');
+    exit();
+}
 $_SESSION['login'] = time();
 
 $query = "SELECT * FROM users WHERE email = ?";
@@ -505,7 +505,7 @@ $row = $stmt->fetch(PDO::FETCH_ASSOC);
                     </div>
                     <span class="service-name">Airtime</span>
                 </div>
-                <div class="service-item" id="buyData" onclick="window.location.href='data_bundle.php.php'">
+                <div class="service-item" id="buyData" onclick="window.location.href='data_bundle.php'">
                     <div class="service-icon">
                         <i class="fas fa-wifi"></i>
                     </div>

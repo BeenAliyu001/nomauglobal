@@ -12,7 +12,7 @@ $id = $_GET['id'];
 $stmt = $pdo->prepare("
     SELECT t.*, u.username as user_name, u.email as u_id 
     FROM transactions t 
-    JOIN users u ON t.u_id = u.id 
+    JOIN users u ON t.user_email = u.email
     WHERE t.id = ?
 ");
 $stmt->execute([$id]);

@@ -63,7 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $_SESSION['warning'] = "Invalid phone number! Must start with 0 and be 11 digits (e.g., 08012345678).";
         $_SESSION['num'] = $phone;
         $_SESSION['price']  = $amount;
-        header("Location: airtime");
+        header("Location: airtimes");
         exit();
     }
 
@@ -76,7 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     case '9mobile': $network = 4; break;
     default:
         $_SESSION['warning'] = "Unknown network selected.";
-        header("Location: airtime.php");
+        header("Location: airtimes.php");
         exit();
 }
 
@@ -86,13 +86,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
          $_SESSION['error'] = "PIN not set .";
         $_SESSION['num'] = $phone;
         $_SESSION['price']  = $amount;
-        header("Location: airtime.php");
+        header("Location: airtimes.php");
         exit();
        }elseif ($pin != $user['pin']) {
          $_SESSION['error'] = "Incorrect PIN used !";
         $_SESSION['num'] = $phone;
         $_SESSION['price']  = $amount;
-        header("Location: airtime");
+        header("Location: airtimes");
         exit();
        }else {
         if ($amount >= 50 && $amount <= 2000) {
@@ -104,7 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $check->execute([$uniq_id]);
         if ($check->rowCount() > 0) {
             $_SESSION['warning'] = "Duplicate transactions prevented.";
-            header("Location: airtime.php");
+            header("Location: airtimes.php");
             exit();
         }
             $request = [
@@ -134,7 +134,7 @@ curl_setopt_array($curl, array(
 
     if ($response === false) {
         $_SESSION['warning'] = "Network error: Unable to reach airtime server.";
-        header("Location: airtime.php");
+        header("Location: airtimes.php");
         exit();
     }
 
@@ -219,7 +219,7 @@ if ($isSuccess) {
             $_SESSION['warning'] = "Minimum purchase amount is ₦50 and maximum is ₦2000.";
             $_SESSION['num'] = $phone;
             $_SESSION['price']  = $amount;
-            header("Location: airtime");
+            header("Location: airtimes");
             exit();
         }
        }
@@ -228,7 +228,7 @@ if ($isSuccess) {
         $_SESSION['warning'] = "Insufficient Funds!";
         $_SESSION['num'] = $phone;
         $_SESSION['price']  = $amount;
-        header("Location: airtime");
+        header("Location: airtimes");
         exit();
     }
 }

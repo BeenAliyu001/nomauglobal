@@ -1,50 +1,93 @@
-<?php
-// error_reporting();
-require_once "config.php";
-$error = ""; // message to display when an error occur
-$success = ""; // mesage to display when no error
-$aerror = "";
-// Function to sanitize input
-function sanitize_input($data) {
-    return htmlspecialchars(stripslashes(trim($data)));
-}
-if($_SERVER['REQUEST_METHOD'] === 'POST')
-{
-  $email = sanitize_input($_POST['email']);
-  $password = sanitize_input($_POST['password']);
-  $Cpassword = sanitize_input($_POST['Cpassword']);
+      <?php
+session_start();
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 
-    $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ? ");
-    $stmt->execute([$email]);
-    $user = $stmt->fetch(PDO::FETCH_ASSOC);
-    
-   if (empty($email)) {
-    $error = "Email is required !";
-   }elseif(!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-    $error = "Invalid email format";
-  }elseif(empty($password)) {
-    $error = "PIN is required !";
-   }elseif (!preg_match('/^\d{4}$/', $password)) {
-    $error = "Transaction PIN must be exactly 4 digits.";
-    }elseif(empty($Cpassword)) {
-    $error = "Confirm PIN is required !";
-   }elseif (!preg_match('/^\d{4}$/', $password)) {
-    $error = "Transaction PIN must be exactly 4 digits.";
-    }elseif($password !== $Cpassword) {
-    $error = "PIN does not match !";
-   }else{
-     if($user > 0){
-        if($user['pin']){
-            $error = "PIN already created";
-            }else {
-                $query = $pdo->prepare("UPDATE users SET pin = ? WHERE email = ? ");
-                $stmt = $query->execute([$password, $user['email']]);
-                $success = "PIN created successfully !";
-            }
-   }else {
-    $aerror = "Only registered user can do this !";
-   }
+include 'config.php'; // Your DB connection file
+// include 'networkDetect.php'; // to automatically detect a network number belong to
+
+// Check if user is logged in
+if (!isset($_SESSION['user_id']) || !isset($_SESSION['is_admin']) || !$_SESSION['is_admin']) {
+    header("Location: ../../index.php");
+    exit();
 }
+
+
+// Get user info
+$user_id = $_SESSION['user_id'];
+$stmt = $pdo->prepare("SELECT username, email, phone  FROM admins WHERE id = ?");
+$stmt->execute([$user_id]);
+$user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+if(isset($_POST['submit'])){
+    $username = htmlspecialchars($_POST['username']);
+    $email = htmlspecialchars($_POST['email']);
+    $phone = htmlspecialchars($_POST['phone']);
+
+    $upd = $pdo->prepare("UPDATE admins SET username = ?, email = ?, phone = ? WHERE id = ? ");
+    $upd->execute([$username, $email, $phone, $user_id]);
+    $suc = $upd;
+
+    if($suc){
+         echo '
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <meta http-equiv="X-UA-Compatible" content="ie=edge">
+          <title>Document</title>
+          <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+      </head>
+      <body>
+          
+          <script>
+              swal.fire({
+                   text : "Account Updated ...",
+                  timer : 3000,
+                  showConfirmButton : false,
+              }).then(() => {
+                  window.location.href = "adminDashboard.php";
+              });
+      
+              setTime(() => {
+                  window.location.href = "adminDashboard.php";
+              }, 3000);
+              </script>
+      </body>
+      </html>
+      ';
+    }else{
+                 echo '
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <meta http-equiv="X-UA-Compatible" content="ie=edge">
+          <title>Document</title>
+          <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+      </head>
+      <body>
+          
+          <script>
+              swal.fire({
+                   text : "Something went wrong !",
+                  timer : 3000,
+                  showConfirmButton : false,
+              }).then(() => {
+                  window.location.href = window.location.href;
+              });
+      
+              setTime(() => {
+                  window.location.href = window.location.href;
+              }, 3000);
+              </script>
+      </body>
+      </html>
+      ';
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -52,9 +95,9 @@ if($_SERVER['REQUEST_METHOD'] === 'POST')
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Create PIN - Beenaliyusub</title>
+    <title>User Profile - BeenAliyu Sub</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         /* Base Styles */
         * {
@@ -65,9 +108,9 @@ if($_SERVER['REQUEST_METHOD'] === 'POST')
         }
         
         :root {
-            --primary:; #8BC34A
-            --primary-dark: #4CAF50;
-            --secondary: #64748b;
+            --primary: #4CAF50;
+            --primary-dark: #8BC34A;
+            --secondary: #388E3C;
             --light: #f8fafc;
             --dark: #1e293b;
             --border: #e2e8f0;
@@ -99,7 +142,7 @@ if($_SERVER['REQUEST_METHOD'] === 'POST')
         .header {
             padding: 32px 32px 24px;
             text-align: center;
-            background: linear-gradient(to right, #4CAF50);
+            background: linear-gradient(to right, var(--primary), var(--primary-dark));
             color: white;
         }
         
@@ -192,7 +235,7 @@ if($_SERVER['REQUEST_METHOD'] === 'POST')
         }
         
         #login-btn {
-            background: linear-gradient(to right, #4CAF50);
+            background: linear-gradient(to right, var(--primary), var(--primary-dark));
             color: white;
             border: none;
             padding: 14px 20px;
@@ -329,11 +372,11 @@ if($_SERVER['REQUEST_METHOD'] === 'POST')
         <div class="header">
             <div class="logo">
                 <div class="logo-icon">
-                    <i class="fas fa-lock"></i>
+                    <i class="fas fa-user-alt"></i>
                 </div>
-                <div class="logo-text">Create 4 digit PIN</div>
+                <div class="logo-text">My Profile</div>
             </div>
-            <!-- <p class="subtitle">Set your transaction PIN for first time</p> -->
+            <p class="subtitle"></p>
         </div>
 
         <div class="form-container">
@@ -341,52 +384,39 @@ if($_SERVER['REQUEST_METHOD'] === 'POST')
             </div>
             
             <form action="#" method="post" autocomplete="off">
-               
                  <div class="input-group">
-                     <label for="username">Email Address</label>
+                     <label for="username">Username</label>
                     <div class="input-wrapper">
-                        <input type="email" id="email" name="email" placeholder="Enter your email address">
-                        <div class="input-icon password-toggle" id="password-toggle">
-                            <!-- <i class="far fa-envelope"></i> -->
-                        </div>
-                    </div>
-                </div>
-              
-                 <div class="input-group">
-                     <label for="username">Enter PIN</label>
-                    <div class="input-wrapper">
-                        <input type="password" id="password" maxlength="4" name="password" placeholder="Enter PIN">
+                        <input type="text" id="password" name="username" value="<?php echo $user['username'] ?>" readonly>
                         <div class="input-icon password-toggle" id="password-toggle">
                             <!-- <i class="far fa-eye"></i> -->
                         </div>
                     </div>
                 </div>
-
-                  <div class="input-group">
-                     <label for="username">Confirm PIN</label>
+                <div class="input-group">
+                     <label for="username">Email</label>
                     <div class="input-wrapper">
-                        <input type="password" id="password" maxlength="4" name="Cpassword" placeholder="Confirm PIN">
+                        <input type="email" id="password" name="email" value="<?php echo $user['email'] ?>">
                         <div class="input-icon password-toggle" id="password-toggle">
                             <!-- <i class="far fa-eye"></i> -->
                         </div>
                     </div>
                 </div>
+                <div class="input-group">
+                     <label for="username">Phone Number</label>
+                    <div class="input-wrapper">
+                        <input type="text" id="password" name="phone" value="<?php echo $user['phone'] ?>">
+                        <div class="input-icon password-toggle" id="password-toggle">
+                            <!-- <i class="far fa-eye"></i> -->
+                        </div>
+                    </div>
+                </div>
+                <button type="submit" name="submit" id="login-btn">Update Account</button>
                 
-                <button type="submit" name="submit" id="login-btn">Set PIN</button>
-
-            </form>
-            
-            <div class="divider">
-                <!-- <span>Or continue with</span> -->
-            </div>
-                        
-            <div class="signup-link">
-                <!-- <span>Already have an account? <a href="../index.php">Sign in here</a></span> -->
-            </div>
-        </div>
+                <div class="footer">
+                    <div class="remember">
     </div>
-     <?php include("nav.php") ?>
-         <script>
+        <script>
             const password = document.getElementById("password");
             const passwordToggle = document.getElementById('password-toggle');
                 // Password visibility toggle
@@ -400,45 +430,6 @@ if($_SERVER['REQUEST_METHOD'] === 'POST')
             icon.classList.toggle('fa-eye-slash');
         });
         </script>
-        <?php if($error) : ?>
-        <script>
-             Swal.fire({
-        icon: 'info',
-        title: 'Oops...',
-        text: <?= json_encode($error) ?>,
-        showConfirmButton: 'Ok',
-        timer: 3000,
-      }).then(() => {
-        window.location.href = window.location.href;
-      });
-        </script>
-        <?php endif; ?>
-
-        <?php if($success) : ?>
-        <script>
-             Swal.fire({
-        icon: 'success',
-        // title: 'Txn PIN Created',
-        text: <?= json_encode($success) ?>,
-        showConfirmButton: false,
-        timer: 3000,
-      }).then(() => {
-        window.location.href = "dashboard.php";
-      });
-        </script>
-        <?php endif; ?>
-        <?php if($aerror) : ?>
-        <script>
-             Swal.fire({
-        icon: 'info',
-        // title: 'Txn PIN Created',
-        text: <?= json_encode($aerror) ?>,
-        showConfirmButton: false,
-        timer: 3000,
-      }).then(() => {
-        window.location.href = "../index.php";
-      });
-        </script>
-        <?php endif; ?>
+          </form>
 </body>
 </html>

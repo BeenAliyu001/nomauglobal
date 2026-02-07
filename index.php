@@ -5,16 +5,16 @@ $error = ""; // message to display when an error occur
 $success = ""; // message to display when success
 require_once "users/config.php";
 if($_SERVER['REQUEST_METHOD'] === "POST"){
-    $username = trim($_POST['username']);
+    $email = trim($_POST['email']);
     $password = trim($_POST['password']);
 
-    if(empty($username)){
-        $error = "Username input cannot be empty !";
+    if(empty($email)){
+        $error = "Email input cannot be empty !";
     }elseif (empty($password)) {
         $error = "Password input cannot be empty !";
     }else {
-        $stmt = $pdo->prepare("SELECT * FROM users WHERE username = ? ");
-        $stmt->execute([$username]);
+        $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ? ");
+        $stmt->execute([$email]);
         $user = $stmt->fetch();
         if($user && password_verify($password, $user['password'])){
              $_SESSION['user_id'] = $user['id'];
@@ -462,9 +462,9 @@ if($_SERVER['REQUEST_METHOD'] === "POST"){
             
             <form action="#" method="post" autocomplete="on" id="registerForm">
                 <div class="input-group">
-                    <label for="username">Username</label>
+                    <label for="username">Email <Address></Address></label>
                     <div class="input-wrapper">
-                        <input type="text" id="username" name="username" placeholder="Enter Username" value="<?php echo $username ?>">
+                        <input type="email" id="username" name="email" placeholder="Enter Email Address" value="<?php echo $email ?>">
                         <!-- <div class="input-icon">
                             <i class="fas fa-user"></i>
                         </div> -->

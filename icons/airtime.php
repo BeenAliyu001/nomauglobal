@@ -59,6 +59,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $amount = $_POST['amount'];
     $pin = $_POST['pin'];
 
+    $callbackUrl = 'localhost/smartdata/customers/users/airtime';
+
     if (!isValidNigerianLocalNumber($phone)) {
         $_SESSION['warning'] = "Invalid phone number! Must start with 0 and be 11 digits (e.g., 08012345678).";
         $_SESSION['num'] = $phone;
@@ -69,17 +71,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $phoneNumber = preg_replace('/\D/', '', $phone);
 
-   switch (strtolower($network)) {
-    case 'mtn': $network = 1; break;
-    case 'glo': $network = 2; break;
-    case 'airtel': $network = 3; break;
-    case '9mobile': $network = 4; break;
-    default:
-        $_SESSION['warning'] = "Unknown network selected.";
-        header("Location: airtime.php");
-        exit();
-}
-
+    switch (strtolower($network)) {
+        case 'mtn': $network = "mtn"; break;
+        case 'glo': $network = "glo"; break;
+        case '9mobile': $network = "9mobile"; break;
+        case 'airtel': $network = "airtel"; break;
+        default:
+            $_SESSION['warning'] = "Unknown network selected.";
+            $_SESSION['num'] = $phone;
+            $_SESSION['price']  = $amount;
+            header("Location: airtime");
+            exit();
+    }
     
     if ($amount <= $balance) {
        if($user['pin'] == ""){
@@ -109,13 +112,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
             $request = [
             'network' => $network,
-            'mobile_number' => $phone,
+            'phone' => $phone,
             'amount' => $amount
         ];
 
 $curl = curl_init();
 curl_setopt_array($curl, array(
-  CURLOPT_URL => 'https://api.rgcdata.com.ng/api/v2/purchase/airtime',
+  CURLOPT_URL => 'https://gearoneplus.com.ng/api/v1/airtime',
   CURLOPT_RETURNTRANSFER => true,
   CURLOPT_ENCODING => '',
   CURLOPT_MAXREDIRS => 10,
@@ -125,96 +128,91 @@ curl_setopt_array($curl, array(
   CURLOPT_CUSTOMREQUEST => 'POST',
   CURLOPT_POSTFIELDS => json_encode($request),
   CURLOPT_HTTPHEADER => array(
-    'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2UiOiJhcGkiLCJpZCI6NDAwMCwiZHNpIjoiOTg1Mzg1ODc3NzI1OTgyODUxODgiLCJpYXQiOjE3Njk4MjgwMzUsImV4cCI6MjA1Mzc1NjI1NCwiaXNzIjoiUmdjZGF0YSJ9.DmXMEObt9uQPriPZMHYJArerlhq3wgNlSXcJW6V8hGo',
+    'Authorization: Bearer cbeb0f55a9682b15eb957e5a3239e63fb0cf23df258a7d0de13a42a8d7b161f6',
     'Content-Type: application/json'
   ),
 ));
 
     $response = curl_exec($curl);
+    curl_close($curl);
 
-    if ($response === false) {
-        $_SESSION['warning'] = "Network error: Unable to reach airtime server.";
-        header("Location: airtime.php");
-        exit();
-    }
+    $res = json_decode($response);
 
-        $res = json_decode($response, true);
-       $isSuccess =
-    (isset($res['status']) && strtolower($res['status']) === 'success') ||
-    (isset($res['success']) && $res['success'] === true);
+    // echo "<pre>";
+    // var_dump($response);
+    // var_dump($res);
+    // exit;
 
-$status = $isSuccess ? 'success' : 'failed';
-$api_response = $res['message'] ?? json_encode($res);
-
-if ($isSuccess) {
+        $status = strtolower($res->status ?? '');
+        $status = $status ?: 'failed';
+        if (($status=='success')){
+        // Extract details
         $number = $phone;
         $date = date('Y-m-d H:i:s');
-        $status = isset($res['status']) ? strtolower($res['status']) : 'failed';
-        $amount_charge = isset($res['amount']) ? floatval($res['amount']) : floatval($amount);
-        $profit = max(0, $amount - $amount_charge);
-        $api_response = $res['message'] ?? json_encode($res);
+        $amount_charge = isset($res->amount) ? floatval($res->amount) : floatval($amount); // default to 0 if missing
+        $profit = max(0, $amount - $amount_charge);  // now profit will be correct
+        $api_response = $res->message;
         $create_at = date('Y-m-d H:i:s');
         $prev_balance = $balance;
         $newbalance = $balance - $amount;
         $post_balance = $balance - $amount;
         $type = "airtime";
-        $profit = max(0, $amount - $amount_charge);
-        $newbalance = $balance - $amount;
+                $pdo->beginTransaction();
 
-    try {
-        $pdo->beginTransaction();
+try {
+    // Update balance
+    $stmt = $pdo->prepare("
+        UPDATE users 
+        SET balance = :balance
+        WHERE email = :email
+    ");
+    $stmt->execute([
+        'balance' => $newbalance,
+        'email'   => $email
+    ]);
 
-        // ✅ Update balance
-        $stmt = $pdo->prepare("
-            UPDATE users SET balance = :balance WHERE email = :email
-        ");
-        $stmt->execute([
-            'balance' => $newbalance,
-            'email'   => $email
-        ]);
+    // Insert transaction
+    $stmt = $pdo->prepare("
+        INSERT INTO transactions
+        (trans_id, category, amount, beneficiary, date, status, user_email,
+         api_response, network, profit, create_at, prev_balance, post_balance, type)
+        VALUES
+        (:trans_id, :category, :amount, :beneficiary, :date, :status, :user_email,
+         :api_response, :network, :profit, :create_at, :prev_balance, :post_balance, :type)
+    ");
 
-        // ✅ Log transaction
-        $stmt = $pdo->prepare("
-            INSERT INTO transactions
-            (trans_id, category, amount, beneficiary, date, status, user_email,
-             api_response, network, profit, create_at, prev_balance, post_balance, type)
-            VALUES
-            (:trans_id, :category, :amount, :beneficiary, :date, :status, :user_email,
-             :api_response, :network, :profit, :create_at, :prev_balance, :post_balance, :type)
-        ");
+    $stmt->execute([
+        'trans_id'     => $uniq_id,
+        'category'     => $network,
+        'amount'       => $amount_charge,
+        'beneficiary'  => $number,
+        'date'         => $date,
+        'status'       => $status,
+        'user_email'   => $email,
+        'api_response' => $api_response,
+        'network'      => $network,
+        'profit'       => $profit,
+        'create_at'    => $create_at,
+        'prev_balance' => $prev_balance,
+        'post_balance' => $post_balance,
+        'type'         => $type
+    ]);
 
-        $stmt->execute([
-            'trans_id'     => $uniq_id,
-            'category'     => $network,
-            'amount'       => $amount_charge,
-            'beneficiary'  => $phone,
-            'date'         => date('Y-m-d H:i:s'),
-            'status'       => 'success',
-            'user_email'   => $email,
-            'api_response' => $api_response,
-            'network'      => $network,
-            'profit'       => $profit,
-            'create_at'    => date('Y-m-d H:i:s'),
-            'prev_balance' => $balance,
-            'post_balance' => $newbalance,
-            'type'         => 'airtime'
-        ]);
+    $pdo->commit(); // ✅ REQUIRED
 
-        $pdo->commit();
-        $_SESSION['success'] = "Airtime purchase successful";
-
-    } catch (Exception $e) {
-        $pdo->rollBack();
-        $_SESSION['warning'] = "Transaction error: " . $e->getMessage();
-        exit();
-    }
-
-} else {
-    // ❌ FAILED — NO BALANCE DEDUCTION
-    $_SESSION['warning'] = $api_response;
+} catch (Exception $e) {
+    $pdo->rollBack();
+    $_SESSION['warning'] = "Transaction error: " . $e->getMessage();
+    header("Location: airtime.php");
     exit();
 }
 
+    } else {
+        $_SESSION['warning'] = "Transaction failed.";
+        $_SESSION['no'] = $phone;
+        header("Location: airtime.php");
+        exit();
+    }
         } else {
             $_SESSION['warning'] = "Minimum purchase amount is ₦50 and maximum is ₦2000.";
             $_SESSION['num'] = $phone;
